@@ -406,6 +406,12 @@ class TableGame extends ChangeNotifier {
     });
   }
 
+  bool get canHeroRaise {
+    final st = state;
+    if (st == null || !st.players.any((p) => p.id == 'hero')) return false;
+    return legalForHero().canRaise;
+  }
+
   String? handCategoryFor(Seat s) {
     final h = winnerHands[s.player.id];
     if (h == null) return null;

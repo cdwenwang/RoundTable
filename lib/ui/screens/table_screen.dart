@@ -261,7 +261,7 @@ class _Ring extends StatelessWidget {
                   turnAnim: turnAnim,
                 ),
               ),
-            if (showSlider && game.state != null && game.state!.players.any((p) => p.id == 'hero'))
+            if (showSlider && game.canHeroRaise)
               Positioned(
                 right: 8,
                 top: 40,
