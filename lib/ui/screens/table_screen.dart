@@ -931,7 +931,7 @@ class _ActionBar extends StatelessWidget {
             children: [
               _radio('盖牌', 'fold', true),
               _radio('让牌', 'check', legal.canCheck),
-              _radio('跟注', 'call', legal.canCall),
+              _radio('跟注', 'call', true),
               _radio(raiseLabel, 'raise', legal.canRaise),
             ],
           ),
@@ -1035,12 +1035,12 @@ class _RaiseSlider extends StatelessWidget {
                   inactiveTrackColor: Colors.white10,
                   overlayColor: const Color(0xFF80DEEA).withValues(alpha: 0.1),
                 ),
-                child: Slider(
+                child: _min < _max ? Slider(
                   min: _min.toDouble(),
                   max: _max.toDouble(),
                   value: value.toDouble().clamp(_min.toDouble(), _max.toDouble()),
                   onChanged: (v) => onChanged(v.round()),
-                ),
+                ) : const SizedBox.shrink(),
               ),
               ),
             ),

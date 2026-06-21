@@ -169,7 +169,7 @@ class TableGame extends ChangeNotifier {
       case 'check':
         return legal.canCheck;
       case 'call':
-        return legal.canCall;
+        return true; // 跟注总是有效（可过牌时=过牌，需跟注时=跟注）
       case 'raise':
         return legal.canRaise &&
             pre.amount != null &&
@@ -232,7 +232,7 @@ class TableGame extends ChangeNotifier {
       if (_preValid()) {
         final pre = heroPre!;
         heroPre = null;
-        Timer(const Duration(seconds: 5), () { if (heroPre == null) _applyHeroAction(_actionOf(pre.type, pre.amount)); });
+        Timer(Duration.zero, () { if (heroPre == null) _applyHeroAction(_actionOf(pre.type, pre.amount)); });
       }
       // 否则等待玩家操作或 30s 超时
     } else if (_bots.containsKey(cur.id)) {
