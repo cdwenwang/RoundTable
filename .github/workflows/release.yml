@@ -17,24 +17,23 @@ jobs:
           flutter-version: '3.44.2'
           channel: stable
 
-      - name: Create local.properties
-        run: echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/roundtable.keystore
+
+      - name: Create key.properties
+        run: |
+          cat > android/key.properties << EOF
+          storePassword=${{ secrets.STORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=roundtable.keystore
+          EOF
 
       - name: Build APK (release)
         run: flutter build apk --release
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
 
       - name: Build AAB (Play Store)
         run: flutter build appbundle --release
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -67,9 +66,6 @@ jobs:
         with:
           flutter-version: '3.44.2'
           channel: stable
-
-      - name: Create local.properties
-        run: echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
 
       - name: Build iOS (no-sign)
         run: flutter build ios --release --no-codesign

@@ -3,6 +3,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystoreProps = mutableMapOf<String, String>()
+val keystoreFile = rootProject.file("key.properties")
+if (keystoreFile.exists()) {
+    keystoreFile.forEachLine { line ->
+        val eq = line.indexOf('=')
+        if (eq > 0) keystoreProps[line.substring(0, eq).trim()] = line.substring(eq + 1).trim()
+    }
+}
+
 android {
     namespace = "com.roundtable.round_table"
     compileSdk = flutter.compileSdkVersion
@@ -21,34 +30,23 @@ android {
         versionName = flutter.versionName
     }
 
-    // 签名配置：优先读 key.properties（本地），其次读环境变量（CI）
-    val keystoreProperties = java.io.File("key.properties")
-    val releaseSigning = if (keystoreProperties.exists()) {
-        val props = java.util.Properties()
-        keystoreProperties.inputStream().use { props.load(it) }
-        signingConfigs.create("release") {
-            keyAlias = props.getProperty("keyAlias")
-            keyPassword = props.getProperty("keyPassword")
-            storeFile = file(props.getProperty("storeFile"))
-            storePassword = props.getProperty("storePassword")
+    signingConfigs {
+        if (keystoreFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProps["keyAlias"]
+                keyPassword = keystoreProps["keyPassword"]
+                storeFile = rootProject.file(keystoreProps["storeFile"] ?: "roundtable.keystore")
+                storePassword = keystoreProps["storePassword"]
+            }
         }
-    } else if (System.getenv("KEYSTORE_BASE64") != null) {
-        val decoded = java.util.Base64.getDecoder().decode(System.getenv("KEYSTORE_BASE64"))
-        val keystoreFile = java.io.File("roundtable.keystore")
-        keystoreFile.writeBytes(decoded)
-        signingConfigs.create("release") {
-            keyAlias = System.getenv("KEY_ALIAS")
-            keyPassword = System.getenv("KEY_PASSWORD")
-            storeFile = keystoreFile
-            storePassword = System.getenv("STORE_PASSWORD")
-        }
-    } else {
-        signingConfigs.getByName("debug")
     }
 
     buildTypes {
         release {
-            signingConfig = releaseSigning
+            signingConfig = if (keystoreFile.exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 }
