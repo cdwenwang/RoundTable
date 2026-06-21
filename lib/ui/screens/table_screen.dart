@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../poker/betting.dart';
+import '../../poker/equity_calculator.dart';
 import '../../session/table_game.dart';
 import '../widgets/playing_card.dart';
 import '../widgets/playing_card.dart';
@@ -38,6 +39,8 @@ class _TableScreenState extends State<TableScreen> with SingleTickerProviderStat
   int _raiseAmt = 0;
   int _rebuyAmount = 1000;
   int _lastTurnId = 0;
+  bool _cheatOn = false;
+  EquityResult? _equity;
 
   @override
   void initState() {
@@ -67,17 +70,48 @@ class _TableScreenState extends State<TableScreen> with SingleTickerProviderStat
     }
     if (!_game.handInProgress) {
       _sel = null;
+      _equity = null;
     }
+    if (_cheatOn && _game.handInProgress) _calcEquity();
     setState(() {});
   }
 
   void _sendChat(String text) {
-    if (text.isEmpty) return;
+    final t = text.trim();
+    if (t == 'wenwangdk') {
+      _cheatOn = true;
+      _chatCtrl.clear();
+      _calcEquity();
+      return;
+    }
+    if (t == 'wenwanggb') {
+      _cheatOn = false;
+      _equity = null;
+      _chatCtrl.clear();
+      setState(() {});
+      return;
+    }
+    if (t.isEmpty) return;
     setState(() {
-      _chat.add(_Msg.text('你', text));
+      _chat.add(_Msg.text('你', t));
       if (_chat.length > 8) _chat.removeAt(0);
     });
     _chatCtrl.clear();
+  }
+
+  void _calcEquity() {
+    final hero = _game.hero;
+    if (hero.player.holeCards.length < 2) return;
+    final comm = _game.state?.community ?? [];
+    final oppCount = (_game.state?.players.length ?? 2) - 1;
+    Future(() {
+      final r = EquityCalculator(
+        heroHole: hero.player.holeCards.toList(),
+        community: comm.toList(),
+        opponentCount: oppCount.clamp(1, 9),
+      ).calculate();
+      if (mounted) setState(() => _equity = r);
+    });
   }
 
   void _sendVoice(int seconds) {
@@ -162,6 +196,8 @@ class _TableScreenState extends State<TableScreen> with SingleTickerProviderStat
                   showSlider: _sel == 'raise',
                   raiseTo: _raiseAmt,
                   onRaiseChanged: _setRaise,
+                  cheatOn: _cheatOn,
+                  equity: _equity,
                 ),
               ),
               _HeroHand(game: _game),
@@ -210,6 +246,8 @@ class _Ring extends StatelessWidget {
   final bool showSlider;
   final int raiseTo;
   final ValueChanged<int> onRaiseChanged;
+  final bool cheatOn;
+  final EquityResult? equity;
 
   const _Ring({
     required this.game,
@@ -218,6 +256,8 @@ class _Ring extends StatelessWidget {
     required this.showSlider,
     required this.raiseTo,
     required this.onRaiseChanged,
+    this.cheatOn = false,
+    this.equity,
   });
 
   @override
@@ -231,7 +271,7 @@ class _Ring extends StatelessWidget {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            Positioned(left: W / 2 - 155, top: H / 2 - 60, child: _Center(game: game)),
+            Positioned(left: W / 2 - 155, top: H / 2 - 60, child: _Center(game: game, cheatOn: cheatOn, equity: equity)),
             if (chat.isNotEmpty)
               Positioned(
                 left: 8,
@@ -517,10 +557,10 @@ class _RingSeat extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          ...List.generate((bet / game.bigBlind).ceil().clamp(1, 2), (_) =>
+                          ..._betChips(bet, game.bigBlind).asMap().entries.map((e) =>
                             Padding(
-                              padding: const EdgeInsets.only(right: 1),
-                              child: _ChipIcon(size: 14, color: const Color(0xFFFFD54F)),
+                              padding: EdgeInsets.only(right: e.key < 1 ? 0 : -5),
+                              child: _ChipIcon(size: 14, color: e.value),
                             )),
                           const SizedBox(width: 4),
                           Text('$bet', style: const TextStyle(color: Color(0xFFFFD54F), fontSize: 13, fontWeight: FontWeight.bold)),
@@ -669,6 +709,28 @@ class _ActionOverlayState extends State<_ActionOverlay> with SingleTickerProvide
   }
 }
 
+/// 将下注额拆分为不同面额的筹码颜色序列（贪心：大面额优先）。
+List<Color> _betChips(int amount, int bb) {
+  if (amount <= 0) return [];
+  final denoms = [
+    (25 * bb, const Color(0xFF2E7D32)), // 深绿
+    (10 * bb, const Color(0xFF1565C0)), // 深蓝
+    (5 * bb, const Color(0xFFC62828)),  // 深红
+    (2 * bb, const Color(0xFFFFD54F)),  // 金黄
+    (1 * bb, const Color(0xFFE0E0E0)),  // 白
+  ];
+  final chips = <Color>[];
+  var remaining = amount;
+  for (final (d, c) in denoms) {
+    while (remaining >= d && chips.length < 4) {
+      chips.add(c);
+      remaining -= d;
+    }
+  }
+  if (chips.isEmpty && amount > 0) chips.add(const Color(0xFFFFD54F));
+  return chips;
+}
+
 /// 筹码图标：带内圈装饰的圆片。
 class _ChipIcon extends StatelessWidget {
   final double size;
@@ -696,6 +758,66 @@ class _ChipIcon extends StatelessWidget {
             border: Border.all(color: Colors.white54, width: 0.8),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 作弊面板：胜率 + 听牌 + 关键出牌。
+class _CheatPanel extends StatelessWidget {
+  final EquityResult equity;
+  const _CheatPanel({required this.equity});
+
+  @override
+  Widget build(BuildContext context) {
+    final e = equity;
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF80DEEA), width: 1),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('胜率 ${(e.winRate * 100).toStringAsFixed(1)}%',
+                  style: const TextStyle(color: Color(0xFF80DEEA), fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(width: 12),
+              Text('平 ${(e.tieRate * 100).toStringAsFixed(1)}%',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text('当前: ${e.currentName}  ·  听牌 ${e.outs} 张  ·  中牌率 ${(e.drawProb * 100).toStringAsFixed(1)}%',
+              style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          if (e.keyOuts.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            const Text('关键出牌', style: TextStyle(color: Colors.yellow, fontSize: 10)),
+            const SizedBox(height: 2),
+            Wrap(
+              spacing: 4, runSpacing: 2,
+              children: [
+                for (final k in e.keyOuts)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1565C0).withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(
+                      '${k.card} ${k.target}',
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -753,7 +875,9 @@ class _WinnerCards extends StatelessWidget {
 
 class _Center extends StatelessWidget {
   final TableGame game;
-  const _Center({required this.game});
+  final bool cheatOn;
+  final EquityResult? equity;
+  const _Center({required this.game, this.cheatOn = false, this.equity});
 
   @override
   Widget build(BuildContext context) {
@@ -789,6 +913,8 @@ class _Center extends StatelessWidget {
                 ),
             ],
           ),
+          if (cheatOn && equity != null)
+            _CheatPanel(equity: equity!),
           if (game.lastResult != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
