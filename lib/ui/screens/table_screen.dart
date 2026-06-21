@@ -558,8 +558,8 @@ class _RingSeat extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           ..._betChips(bet, game.bigBlind).asMap().entries.map((e) =>
-                            Padding(
-                              padding: EdgeInsets.only(right: e.key < 1 ? 0 : -5),
+                            Transform.translate(
+                              offset: Offset(e.key * -5.0, 0),
                               child: _ChipIcon(size: 14, color: e.value),
                             )),
                           const SizedBox(width: 4),
